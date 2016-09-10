@@ -385,41 +385,95 @@ Test_Plot_Model2 <- function(data_rtpcr,num_iter=200)
   return(sf_dim_reaction2)
 }
 
-#parameters
+Test_Some_More_Shit <- function(data_rtpcr,num_iters=100)
+{
+  require("rstan")
+  ts <- data_rtpcr$time_seq[seq(from=1,to=720,by=3)];
+  cy35_1 <- data_rtpcr$`24hb_4nM_12nM_dos_Cy35`[seq(from=1,to=720,by=3)]
+  cy35_2 <- data_rtpcr$`24hb_4nM_40nM_dos_Cy35`[seq(from=1,to=720,by=3)]
+ # print(ts)
+#  print(cy35_1)
+  a0_1 <- 4;
+  d0_1 <- 12;
+  a0_2 <- 4;
+  d0_2 <- 40;
+  
+  t0 <- 0;
+  
+  sf_data_dimerization3 <- list(T=length(ts),cy35_1 =cy35_1,cy35_2=cy35_2,ts=ts,a0_1=a0_1,a0_2=a0_2,d0_1=d0_1,d0_2=d0_2,t0=0)
+  
+  sf_init_dimerization3 <- list(list(sigma=40,k1=1e-4,k2=5e-4,amp_cy35_1=800,bg_cy35_1=5000,amp_cy35_2=800,bg_cy35_1=5000))
+  sf_dim_reaction3 <- stan(file="/Users/christianwachauf/Documents/Scripts/GithubRepo/RT_PCR_Evaluation/Stan/dimerization_reaction3.stan",data=sf_data_dimerization3,
+                           init=sf_init_dimerization3,iter=num_iters,chain=1)
+  return(sf_dim_reaction3)
+}
+
+Test_Some_More_Shit3 <- function(sf_shit)
+{
+
+  mat_shit <- as.matrix(sf_shit)
+  sigma_mean <- mean(mat_shit[,1])
+  k1_mean <- mean(mat_shit[,2])
+  k2_mean <- mean(mat_shit[,3])
+  amp_cy35_1_mean <- mean(mat_shit[,4])
+  bg_cy35_1_mean <- mean(mat_shit[,5])
+  amp_cy35_2_mean <- mean(mat_shit[,6])
+  bg_cy35_2_mean <- mean(mat_shit[,7])
+  
+  ts <- seq(from=30,to=7200,by=30)
+  stan_data_fit_dim_react3 <- list(T=length(ts),y0_1=c(4,12,0,0),y0_2=c(4,40,0,0),t0=0,ts=ts,theta=c(k1_mean,k2_mean),amp_cy35_1 = amp_cy35_1_mean,
+                                   bg_cy35_1 = bg_cy35_1_mean,amp_cy35_2 = amp_cy35_2_mean,bg_cy35_2=bg_cy35_2_mean,sigma=sigma_mean)
+  fit_stan_dim_react3 <- stan(file="/Users/christianwachauf/Documents/Scripts/GithubRepo/RT_PCR_Evaluation/Stan/fit_dimerization_reaction3.stan",data=stan_data_fit_dim_react3,
+                              iter=1,chain=1,algorithm="Fixed_param")
+  return(fit_stan_dim_react3)
+}
+
+
+Plot_Shit_Dim_React3 <- function(data_rtpcr,sf_fit_shit)
+{
+  array_res <- as.array(sf_fit_shit)
+  plot(data_rtpcr$time_seq[1:720],data_rtpcr$`24hb_4nM_12nM_dos_Cy35`[1:720],xlab="time [s]",ylab="intensity [a.u.]",ylim=c(4800,9000))
+  points(data_rtpcr$time_seq[1:720],data_rtpcr$`24hb_4nM_40nM_dos_Cy35`[1:720])
+  points(ts,array_res[1:240],type="l",col="red",lwd=2)
+  points(ts,array_res[241:480],type="l",col="red",lwd=2)
+  
+}
+#data
 #{
-#  real<lower=0> sigma;
-#  real<lower=0> k_on1;
-#  real<lower=0> k_on2;
-  
-#  real <lower=0> A0s[num_traces];
-#  real <lower=0> B0s[num_traces];
-#  real <lower=0> D01s[num_traces];
-#  real <lower=0> D02s[num_traces];
-  
-#  real <lower=0> amps_cy35[num_traces];
-#  real <lower=0> bgs_cy35[num_traces];
+#  int<lower=1> T; // number of data points
+#  real y0_1[4]; // initial concentrations part2 
+#  real y0_2[4]; // initial concentrations part2
+#  real t0;    // time for the initial concentrations
+#  real ts[T]; // times at which model sh
+#  real theta[2]; // the two rate constants....
+##  real<lower=0,upper=3000> amp_cy35_1; // amplitude (proportionality constant between intensity and concentration)
+#  real<lower=0,upper=10000> bg_cy35_1; // background-signal
+#  real<lower=0,upper=3000> amp_cy35_2;
+#  real<lower=0,upper=10000> bg_cy35_2;
+#  real<lower=0> sigma; // noise
 #}
 
 #data
 #{
-#  int<lower=1> num_times; // how many time points ?
-#  int<lower=1> num_traces; // how many different intensity traces (differing by the initial concentration) ?
-#  real<lower=0> ts[num_times]; // times (should be the same for all traces...)
-#  real intens[num_traces,num_times]; // intensity data..
-  
-#  real<lower=0> mu_A0s[num_traces];
-#  real<lower=0> sigma_A0s[num_traces];
-#  
-#  real<lower=0> mu_B0s[num_traces];
-#  real<lower=0> sigma_B0s[num_traces];
-  
-#  real<lower=0> mu_D1_0s[num_traces];
-#  real<lower=0> sigma_D1_0s[num_traces];
-  
-#  real<lower=0> mu_D2_0s[num_traces];
-#  real<lower=0> sigma_D2_0s[num_traces];
-  
-#  real<lower=0> mu_amps_cy35[num_traces];
-#  real<lower=0> mu_bgs_cy35[num_traces];
+#  int<lower=1> T; // number of data points
+#  real cy35_1[T]; // cy35-intensity with initial concentrations part1 
+#  real cy35_2[T]; // cy35-intensity with initial concentrations part2 
+#  real ts[T]; // times at which intensities were measured...#
+#  real a0_1;  // initial concentrations 
+#  real a0_2;  // initial concentrations
+#  real d0_1;  // initial concentrations
+#  real d0_2;  // initial concentrations
+#  real t0;    // time for the initial concentrations
 #}
 
+
+#parameters
+#{
+#  real<lower=0> sigma; // noise, supposed to be equal in both cases...
+#  real<lower=0> k1; // rate constants (theta[1] and theta[2])
+#  real<lower=0> k2;
+#  real<lower=0> amp_cy35_1;
+#  real<lower=0> bg_cy35_1;
+#  real<lower=0> amp_cy35_2;
+#  real<lower=0> bg_cy35_1;
+#}
