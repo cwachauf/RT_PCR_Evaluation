@@ -86,6 +86,43 @@ Stan_Fit_Simple_Dimerization_Reaction1 <- function(times,cy35_data,A0_mu,A0_sigm
   return(sf_dimerization_reaction1)
 }
 
+Stan_Fit_Simple_Dimerization_Reaction1_Global <- function(times,cy35_curves,A0_mus,A0_sigmas,amps_mus,bgs_mus,num_iters=200)
+{
+  require("rstan")
+  num_traces <- length(A0_mus)
+  data_stan_fit_dimerization1_gf <- list(num_times=length(times),num_traces=num_traces,ts=times,intens=cy35_curves,mu_A0s=A0_mus,sigma_A0s=A0_sigmas,
+                                      mu_amps_cy35=amps_mus,mu_bgs_cy35=bgs_mus)
+  
+  A0s_init <- rnorm(n=num_traces,mean=A0_mus,sd=A0_sigmas)
+  amps_cy35_init <- rnorm(n=num_traces,mean=amps_mus,sd=200)
+  bgs_cy35_init <- rnorm(n=num_traces,mean=bgs_mus,sd=500)
+  
+  init_stan_fit_dimerization1_gf <- list(list(sigma=40,k_on=1e-4,A0s=A0s_init,amps_cy35=amps_cy35_init,bgs_cy35 = bgs_cy35_init))
+  sf_dimerization_reaction1_gf <- stan(file="/Users/christianwachauf/Documents/Scripts/GithubRepo/RT_PCR_Evaluation/Stan/dimerization_reaction1_global.stan",
+                                       data=data_stan_fit_dimerization1_gf,init=init_stan_fit_dimerization1_gf,iter=num_iters,chain=1)
+  return(sf_dimerization_reaction1_gf)
+}
+
+
+Test_Stan_Fit_DimReac1Glob <- function(data_rtpcr,num_iters=200)
+{
+  times <- data_rtpcr$time_seq[1:720]
+  cy35_2nM <- data_rtpcr$`24hb_2nM_40nM_dos_Cy35`[1:720]##24hb_2nM_40nM_dos_Cy35[1:720]
+  cy35_4nM <- data_rtpcr$`24hb_4nM_40nM_dos_Cy35`[1:720]##24hb_4nM_40nM_dos_Cy35[1:720]
+  cy35_data <- array(0,dim=c(2,length(times)))
+  
+  cy35_data[1,] <- cy35_2nM
+  cy35_data[2,] <- cy35_4nM
+  
+  A0_mus <- c(2,4)
+  A0_sigmas <- c(0.25,0.5)
+  amps_mus <- c(800,800)
+  bgs_mus <- c(5000,5000)
+  sf_dimerization_reaction1_gf <- Stan_Fit_Simple_Dimerization_Reaction1_Global(times,cy35_data,A0_mus=A0_mus,
+                                                                              A0_sigmas = A0_sigmas,amps_mus=amps_mus,bgs_mus=bgs_mus,num_iters=num_iters)
+  return(sf_dimerization_reaction1_gf)
+}
+
 
 ## obtain mean values from the fit and
 ## plot the function with these values:
@@ -122,12 +159,68 @@ Dimer_Concentration_Simple_Dimerization1 <- function(A_0,k_on,t)
 Make_Plot_With_Data_And_Fit <- function(data_rtpcr,sf_dimerization_reaction1)
 {
    time_data <- data_rtpcr$time_seq
-   cy35_data <- data_rtpcr$`24hb_4nM_40nM_pos_Cy35`
+   cy35_data <- data_rtpcr$`24hb_2nM_40nM_pos_Cy35`
    plot(time_data,cy35_data,xlim=c(0,10000),xlab="time [s]",ylab="intensity [a.u.]")
    time_sequ <- seq(from=0,to=10000,by=5)
    df_plot_data <- Plot_Mean_Posterior_Simple_Dimerization_Reaction1(sf_dimerization_reaction1,time_sequ)
    points(df_plot_data$times,df_plot_data$int_cy35,type="l",col="red")
    
+}
+
+Return_Prediction_Intervals_For_Posterior_Dimerization_Reaction1_Global <- function(sf_dimerization1_gf,times)
+{
+  require("coda")
+  mat_gf <- as.matrix(sf_dimerization1_gf)
+  num_samples <- nrow(mat_gf)
+  num_cols <- ncol(mat_gf)
+  num_times <- length(times)
+  print(num_cols)
+  num_traces <- (num_cols-3)/3
+  print("number of traces: ")
+  print(num_traces)
+  
+  
+  int_mean <- array(0,dim=c(num_traces,num_times))
+  int_lp <- array(0,dim=c(num_traces,num_times))
+  int_up <- array(0,dim=c(num_traces,num_times))
+  
+  A0s_curr <- array(0,dim=c(num_traces))
+  amps_cy35_curr <- array(0,dim=c(num_traces))
+  bgs_cy35_curr <- array(0,dim=c(num_traces))
+  predictions_intensity <- array(0,dim=c(num_traces,num_samples,length(times)))
+  for(i in 1:num_samples)
+  {
+      sigma_curr <- mat_gf[i,1]
+      k_on_curr <- mat_gf[i,2]
+      for(j in 1:num_traces)
+      {
+        A0s_curr[j] <- mat_gf[i,2+j]
+        amps_cy35_curr[j] <- mat_gf[i,2+num_traces+j]
+        bgs_cy35_curr[j] <- mat_gf[i,2+2*num_traces+j]
+        for(t in 1:length(times))
+        {
+          predictions_intensity[j,i,t] <- Dimer_Concentration_Simple_Dimerization1(A0s_curr[j],k_on_curr,times[t])
+          predictions_intensity[j,i,t] <- predictions_intensity[j,i,t]* amps_cy35_curr[j] + bgs_cy35_curr[j]
+        ## add noise (i)
+          predictions_intensity[j,i,t] <- predictions_intensity[j,i,t] + rnorm(n=1,mean=0,sd=sigma_curr)
+        }
+      }
+  }
+  for(j in 1:num_traces)
+  {
+    for(t in 1:length(times))
+    {
+      ##t_mean[j,t] <- mean(predictions_intensity[,j])
+      int_mean[j,t] <- mean(predictions_intensity[j,,t])
+      hdi_values <- HPDinterval(as.mcmc(predictions_intensity[j,,t]))
+      int_lp[j,t] <- hdi_values[1];
+      int_up[j,t] <- hdi_values[2];
+    }
+    ##df_preds <- data.frame(times,int_mean,int_lp,int_up)
+    ##return(df_preds)
+  }
+  df_preds <- data.frame(int_mean,int_lp,int_up)
+  return(df_preds)
 }
 
 ## Return_Prediction_Intervals_For_Posterior_Dimerization_Reaction1(sf_dimerization_reaction,times)
@@ -183,7 +276,7 @@ Plot_Data_Dimerization_Reaction1_With_Preds <- function(times,cy35_data,df_preds
 {
   plot(times,cy35_data,xlab="time [s]",ylab="intensity [a.u.]")
   ## add prediction bands
-  points(df_preds$times,df_preds$int_mean,type="l",lwd=1,col="red")
+  points(df_preds$times,df_preds$int_mean,type="l",lwd=2,col="red")
   points(df_preds$times,df_preds$int_lp,type="l",lwd=1,col="blue")
   points(df_preds$times,df_preds$int_up,type="l",lwd=1,col="blue")
 }
@@ -205,10 +298,10 @@ Make_Plot_Of_Rate_Parameter <- function(rate_samples)
   sdev <- sd(rate_samples)
   df_gamma_dist_params <- Get_Gamma_Distribution_Parameters_From_Moments(mw,sdev)
   
-  ks <- seq(from=4e-4,to=12e-4,by=2e-6)
+  ks <- seq(from=4e-4,to=20e-4,by=2e-6)
   probs <- dgamma(ks,shape=df_gamma_dist_params$k,scale=df_gamma_dist_params$theta)
   plot(ks,probs,type="l",lty=2,lwd=2,xlab="k_on [1/(nM s)]",ylab="probability density")
-  hist(mat[,2],breaks=20,add=TRUE,freq=FALSE)
+  hist(mat[,2],breaks=10,add=TRUE,freq=FALSE)
   
   hdi_values <- HPDinterval(as.mcmc(mat[,2]))
   lp <- hdi_values[1];
