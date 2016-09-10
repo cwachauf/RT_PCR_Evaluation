@@ -79,7 +79,9 @@ Stan_Fit_Simple_Dimerization_Reaction1 <- function(times,cy35_data,A0_mu,A0_sigm
   require("rstan")
   data_stan_fit_dimerization1 <- list(npnts=length(times),ts=times,cy35_1=cy35_data,mu_A0=A0_mu,sigma_A0=A0_sigma)
   
-  init_stan_fit_dimerization1 <- list(list(sigma=40,k_on=1e-4,A_0=4,amp_cy35=750,bg_cy35=5000))
+  ##draw initial concentration from the prior 
+  A0_init <- rnorm(n=1,mean=A0_mu,sd=A0_sigma)
+  init_stan_fit_dimerization1 <- list(list(sigma=40,k_on=1e-4,A_0=A0_init,amp_cy35=750,bg_cy35=5000))
   
   sf_dimerization_reaction1 <- stan(file="/Users/christianwachauf/Documents/Scripts/GithubRepo/RT_PCR_Evaluation/Stan/dimerization_reaction1.stan",data=data_stan_fit_dimerization1,
                                     init=init_stan_fit_dimerization1,iter=num_iters,chain=1)
@@ -171,7 +173,11 @@ Return_Prediction_Intervals_For_Posterior_Dimerization_Reaction1_Global <- funct
 {
   require("coda")
   mat_gf <- as.matrix(sf_dimerization1_gf)
+  
+
   num_samples <- nrow(mat_gf)
+  ##num_samples <- 100 ## temporary !!
+  
   num_cols <- ncol(mat_gf)
   num_times <- length(times)
   print(num_cols)
@@ -219,7 +225,7 @@ Return_Prediction_Intervals_For_Posterior_Dimerization_Reaction1_Global <- funct
     ##df_preds <- data.frame(times,int_mean,int_lp,int_up)
     ##return(df_preds)
   }
-  df_preds <- data.frame(int_mean,int_lp,int_up)
+  df_preds <- data.frame(int_mean[1,],int_lp[1,],int_up[1,],int_mean[2,],int_lp[2,],int_up[2,])
   return(df_preds)
 }
 
@@ -272,6 +278,29 @@ Return_Prediction_Intervals_For_Posterior_Dimerization_Reaction1 <- function(sf_
   return(df_preds)
 }
 
+Plot_Data_Dimerization_Reaction1_With_Preds_Global <- function(times,cy35_data,df_preds)
+{
+  max_val <- max(cy35_data)
+  min_val <- min(cy35_data)
+  
+  d_intens <- (max_val - min_val)
+  
+  max_val <- max_val + 0.05*d_intens;
+  min_val <- min_val - 0.05*d_intens;
+  
+  
+  plot(times,cy35_data[1,],xlab="time [s]",ylab="intensity [a.u.]",ylim=c(min_val,max_val))
+  points(times,cy35_data[2,])
+  
+  points(times,df_preds[,1],type="l",lwd=2,col="red")
+  points(times,df_preds[,4],type="l",lwd=2,col="red")
+  
+  points(times,df_preds[,2],type="l",lwd=1,col="blue")
+  points(times,df_preds[,3],type="l",lwd=1,col="blue")
+  points(times,df_preds[,5],type="l",lwd=1,col="blue")
+  points(times,df_preds[,6],type="l",lwd=1,col="blue")
+}
+  
 Plot_Data_Dimerization_Reaction1_With_Preds <- function(times,cy35_data,df_preds)
 {
   plot(times,cy35_data,xlab="time [s]",ylab="intensity [a.u.]")
@@ -301,9 +330,9 @@ Make_Plot_Of_Rate_Parameter <- function(rate_samples)
   ks <- seq(from=4e-4,to=20e-4,by=2e-6)
   probs <- dgamma(ks,shape=df_gamma_dist_params$k,scale=df_gamma_dist_params$theta)
   plot(ks,probs,type="l",lty=2,lwd=2,xlab="k_on [1/(nM s)]",ylab="probability density")
-  hist(mat[,2],breaks=10,add=TRUE,freq=FALSE)
+  hist(rate_samples,breaks=10,add=TRUE,freq=FALSE)
   
-  hdi_values <- HPDinterval(as.mcmc(mat[,2]))
+  hdi_values <- HPDinterval(as.mcmc(rate_samples))
   lp <- hdi_values[1];
   up <- hdi_values[2];
   xvs_1 <- c(lp,lp)
@@ -314,5 +343,83 @@ Make_Plot_Of_Rate_Parameter <- function(rate_samples)
   df_cred_interv <- data.frame(mw,lp,up)
   return(df_cred_interv)
 }
+
+Test_Plot_Model2 <- function(data_rtpcr,num_iter=200)
+{
+  require("rstan")
+  ts <- data_rtpcr$time_seq[seq(from=1,to=720,by=3)];
+  num_traces <- 2;
+  intens <- array(0,dim=c(num_traces,length(ts)))
+  intens[1,] <- data_rtpcr$`24hb_4nM_12nM_dos_Cy35`[seq(from=1,to=720,by=3)]
+  intens[2,] <- data_rtpcr$`24hb_4nM_40nM_dos_Cy35`[seq(from=1,to=720,by=3)]
   
+  mu_A0s <- c(4,4);
+  mu_B0s <- c(4,4);
+  
+  sigma_A0s <- c(0.4,0.4);
+  sigma_B0s <- c(0.4,0.4);
+  
+  mu_D1_0s <- c(12,40);
+  sigma_D1_0s <- c(1.2,4.0);
+  
+  mu_D2_0s <- c(12,40);
+  sigma_D2_0s <- c(1.2,4.0);
+  
+  init_A0s <- rnorm(n=num_traces,mean=mu_A0s,sd=sigma_A0s)
+  init_B0s <- rnorm(n=num_traces,mean=mu_B0s,sd=sigma_B0s)
+  init_D1_0s <- rnorm(n=num_traces,mean=mu_D1_0s,sd=sigma_D1_0s)
+  init_D2_0s <- rnorm(n=num_traces,mean=mu_D2_0s,sd=sigma_D2_0s)
+  
+  mu_amps_cy35 <- c(800,800)
+  mu_bgs_cy35 <- c(5000,5000)
+  
+  data_stan_dim_reaction2 <- list(num_times = length(ts),num_traces=num_traces,ts=ts,
+                                intens=intens,mu_A0s=mu_A0s,sigma_A0s=sigma_A0s,mu_B0s=mu_B0s,sigma_B0s=sigma_B0s,
+                                mu_D1_0s=mu_D1_0s,sigma_D1_0s=sigma_D1_0s,mu_D2_0s=mu_D2_0s,sigma_D2_0s=sigma_D2_0s,mu_amps_cy35=mu_amps_cy35,
+                                mu_bgs_cy35=mu_bgs_cy35)
+  ## init: sigma, all concentrations, k_on1,k_on2
+  init_stan_dim_reaction2 <- list(list(sigma=40,k_on1=1e-4,k_on2=5e-4,A0s=init_A0s,B0s=init_B0s,D01s=init_D1_0s,D02s=init_D2_0s,amps_cy35=c(800,800),bgs_cy35=c(5000,5000)))
+  
+  sf_dim_reaction2 <- stan(file="/Users/christianwachauf/Documents/Scripts/GithubRepo/RT_PCR_Evaluation/Stan/dimerization_reaction2.stan",data=data_stan_dim_reaction2,
+                         init=init_stan_dim_reaction2,iter=num_iter,chain=1)
+  return(sf_dim_reaction2)
+}
+
+#parameters
+#{
+#  real<lower=0> sigma;
+#  real<lower=0> k_on1;
+#  real<lower=0> k_on2;
+  
+#  real <lower=0> A0s[num_traces];
+#  real <lower=0> B0s[num_traces];
+#  real <lower=0> D01s[num_traces];
+#  real <lower=0> D02s[num_traces];
+  
+#  real <lower=0> amps_cy35[num_traces];
+#  real <lower=0> bgs_cy35[num_traces];
+#}
+
+#data
+#{
+#  int<lower=1> num_times; // how many time points ?
+#  int<lower=1> num_traces; // how many different intensity traces (differing by the initial concentration) ?
+#  real<lower=0> ts[num_times]; // times (should be the same for all traces...)
+#  real intens[num_traces,num_times]; // intensity data..
+  
+#  real<lower=0> mu_A0s[num_traces];
+#  real<lower=0> sigma_A0s[num_traces];
+#  
+#  real<lower=0> mu_B0s[num_traces];
+#  real<lower=0> sigma_B0s[num_traces];
+  
+#  real<lower=0> mu_D1_0s[num_traces];
+#  real<lower=0> sigma_D1_0s[num_traces];
+  
+#  real<lower=0> mu_D2_0s[num_traces];
+#  real<lower=0> sigma_D2_0s[num_traces];
+  
+#  real<lower=0> mu_amps_cy35[num_traces];
+#  real<lower=0> mu_bgs_cy35[num_traces];
+#}
 
