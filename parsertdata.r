@@ -119,7 +119,7 @@ LoadRTPCRData <- function(filename,mp)
     curr_num_rep_meas <- curr_rtpcr_seg@num_rep_meas
     
     curr_end_time <- start_time+(curr_num_time_pts-1)*curr_dt
-    temp_time_seq <- rep(seq(from=start_time,to=curr_end_time,by=curr_dt),each=3)
+  temp_time_seq <- rep(seq(from=start_time,to=curr_end_time,by=curr_dt),each=3)
     time_seq <- c(time_seq,temp_time_seq)
   }
   ## calculate the total number of data points....
@@ -154,11 +154,12 @@ LoadRTPCRData <- function(filename,mp)
       for(index_channel in 1:num_channels)
       {
         for(j in 1:points_pwell_curr_seg)
-      ##  data_array[index_well,(offset_curr_well_points+1):(offset_curr_well_points+points_pwell_curr_seg),index_channel,1]<-df[curr_well_start_pos:curr_well_start_pos+points_pwell_curr_seg-1,col_indices[index_channel]+1]
-      ##  data_array[index_well,(offset_curr_well_points+1):(offset_curr_well_points+points_pwell_curr_seg),index_channel,2]<-df[curr_well_start_pos:curr_well_start_pos+points_pwell_curr_seg-1,col_indices[index_channel]+2]
-        data_array[index_well,offset_curr_well_points+j,index_channel,1]<-df[curr_well_start_pos+j-1,col_indices[index_channel]+1]
-        data_array[index_well,offset_curr_well_points+j,index_channel,2]<-df[curr_well_start_pos+j-1,col_indices[index_channel]+2]
-       
+        {
+        ##  data_array[index_well,(offset_curr_well_points+1):(offset_curr_well_points+points_pwell_curr_seg),index_channel,1]<-df[curr_well_start_pos:curr_well_start_pos+points_pwell_curr_seg-1,col_indices[index_channel]+1]
+        ##  data_array[index_well,(offset_curr_well_points+1):(offset_curr_well_points+points_pwell_curr_seg),index_channel,2]<-df[curr_well_start_pos:curr_well_start_pos+points_pwell_curr_seg-1,col_indices[index_channel]+2]
+          data_array[index_well,offset_curr_well_points+j,index_channel,1]<-df[curr_well_start_pos+j-1,col_indices[index_channel]+1]
+          data_array[index_well,offset_curr_well_points+j,index_channel,2]<-df[curr_well_start_pos+j-1,col_indices[index_channel]+2]
+        } 
       }
     }
     offset_curr_well_points <- offset_curr_well_points+points_pwell_curr_seg
@@ -179,8 +180,10 @@ LoadRTPCRData <- function(filename,mp)
     for(index_channel in 1:num_channels)
     {
       curr_name <- paste(well_name_list[[index_well]],channel_name_list[[index_channel]],sep="_")
+      curr_name2 <- paste(well_name_list[[index_well]],channel_name_list[[index_channel]],sep="_TEMP_")
       print(curr_name)
       df_return[curr_name] <- data_array[index_well,,index_channel,1]
+      df_return[curr_name2] <- data_array[index_well,,index_channel,2]
     }
   }
   return(df_return)
@@ -224,23 +227,26 @@ PlotAllChannels <- function(df_result,mp)
       {
         points(df_result$time_seq,df_result[,curr_name])
       }
-      
     }
   }
 }
 
-## Very simple minded 
-NLSFitCy35Curve <- function(x,y)
+## read measurement protocol from ".xls"-file:
+## list(240,30,3,"END",240,60,3,"END",240,120,3,"END")
+Get_List_Ommp_From_File <- function(filename)
 {
-  plot(x,y,xlab="time [s]",ylab="intensity [a.u.]")
-  data <- data.frame(x,y)
-  m <- nls(y ~ A0+I*(z*x)/(1+z*x),data=data,start=list(A0=5000,I=2000,z=1e-04),trace=T)
-  tt <- seq(0,50000,length=500)
-  lines(tt,predict(m,list(x=tt)),col="red")
-}
-
-BayesFitCy35Curve <- function(x,y)
-{
+  require("gdata")
+  df_protocol <- read.xls(filename)
+  print(df_protocol)
+  list_ommp <- list()
   
-
+  num_rows <- nrow(df_protocol)
+  for(i in 1:num_rows)
+  {
+    list_ommp <- append(list_ommp,df_protocol[i,5])
+    list_ommp <- append(list_ommp,df_protocol[i,3])
+    list_ommp <- append(list_ommp,df_protocol[i,6])
+    list_ommp <- append(list_ommp,toString(df_protocol[i,7]))
+  }
+  return(list_ommp)
 }

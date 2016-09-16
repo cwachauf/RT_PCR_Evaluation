@@ -327,7 +327,7 @@ Make_Plot_Of_Rate_Parameter <- function(rate_samples)
   sdev <- sd(rate_samples)
   df_gamma_dist_params <- Get_Gamma_Distribution_Parameters_From_Moments(mw,sdev)
   
-  ks <- seq(from=4e-4,to=20e-4,by=2e-6)
+  ks <- seq(from=8e-4,to=12e-4,by=2e-6)
   probs <- dgamma(ks,shape=df_gamma_dist_params$k,scale=df_gamma_dist_params$theta)
   plot(ks,probs,type="l",lty=2,lwd=2,xlab="k_on [1/(nM s)]",ylab="probability density")
   hist(rate_samples,breaks=10,add=TRUE,freq=FALSE)
@@ -337,9 +337,9 @@ Make_Plot_Of_Rate_Parameter <- function(rate_samples)
   up <- hdi_values[2];
   xvs_1 <- c(lp,lp)
   xvs_2 <- c(up,up)
-  points(xvs_1,c(0,5000),type="l",lty=2,col="red")
-  points(xvs_2,c(0,5000),type="l",lty=2,col="red")
-  points(c(mw,mw),c(0,5000),type="l",lty=2,col="blue")
+  points(xvs_1,c(0,90000),type="l",lty=2,col="red")
+  points(xvs_2,c(0,90000),type="l",lty=2,col="red")
+  points(c(mw,mw),c(0,90000),type="l",lty=2,col="blue")
   df_cred_interv <- data.frame(mw,lp,up)
   return(df_cred_interv)
 }
@@ -438,42 +438,182 @@ Plot_Shit_Dim_React3 <- function(data_rtpcr,sf_fit_shit)
   points(ts,array_res[241:480],type="l",col="red",lwd=2)
   
 }
-#data
-#{
-#  int<lower=1> T; // number of data points
-#  real y0_1[4]; // initial concentrations part2 
-#  real y0_2[4]; // initial concentrations part2
-#  real t0;    // time for the initial concentrations
-#  real ts[T]; // times at which model sh
-#  real theta[2]; // the two rate constants....
-##  real<lower=0,upper=3000> amp_cy35_1; // amplitude (proportionality constant between intensity and concentration)
-#  real<lower=0,upper=10000> bg_cy35_1; // background-signal
-#  real<lower=0,upper=3000> amp_cy35_2;
-#  real<lower=0,upper=10000> bg_cy35_2;
-#  real<lower=0> sigma; // noise
-#}
 
-#data
-#{
-#  int<lower=1> T; // number of data points
-#  real cy35_1[T]; // cy35-intensity with initial concentrations part1 
-#  real cy35_2[T]; // cy35-intensity with initial concentrations part2 
-#  real ts[T]; // times at which intensities were measured...#
-#  real a0_1;  // initial concentrations 
-#  real a0_2;  // initial concentrations
-#  real d0_1;  // initial concentrations
-#  real d0_2;  // initial concentrations
-#  real t0;    // time for the initial concentrations
-#}
 
+Stan_Fit_Dimerization_Reaction4 <- function(data_rt_pcr,num_iters)
+{
+  num_traces <- 4;
+  indices <- seq(from=1,to=720,by=3)
+  num_times <- length(indices)
+  times <- data_rtpcr$time_seq[indices]
+  cy35_data <- array(0,dim=c(num_traces,num_times))
+  cy35_data[1,] <- data_rtpcr$`24hb_2nM_12nM_dos_Cy35`[indices];
+  cy35_data[2,] <- data_rtpcr$`24hb_2nM_40nM_dos_Cy35`[indices];
+  cy35_data[3,] <- data_rtpcr$`24hb_4nM_12nM_dos_Cy35`[indices];
+  cy35_data[4,] <- data_rtpcr$`24hb_4nM_40nM_dos_Cy35`[indices];
+  
+  A0s <- c(2,2,4,4);
+  D0s <- c(12,40,12,40);
+  
+  bgs_cy35_init <- c(5000,5000,5000,5000)
+  amps_cy35_init <- c(800,800,800,800)
+  
+  data_sf_dim_react4 <- list(num_times=num_times,num_traces=num_traces,ts=times,cy35_data=cy35_data,A0s=A0s,D0s=D0s,t0=0)
+  init_sf_dim_react4 <- list(list(sigma=40,k1=1e-4,k2=5e-4,bgs_cy35=bgs_cy35_init,amps_cy35=amps_cy35_init))
+  sf_dim_react4 <- stan(file="/Users/christianwachauf/Documents/Scripts/GithubRepo/RT_PCR_Evaluation/Stan/dimerization_reaction4.stan",
+                        data=data_sf_dim_react4,init=init_sf_dim_react4,chain=1,iter=num_iters)
+  return(sf_dim_react4)
+}
+
+Plot_Dimerization_Reaction4 <- function(data_rtpcr,sf_dim_react4)
+{
+ mat_dr4 <- as.matrix(sf_dim_react4)
+ num_traces <- 4
+ ts <- seq(from=30,to=7200,by=30)
+ print(head(mat_dr4))
+ k1_mean <- mean(mat_dr4[,2])
+ k2_mean <- mean(mat_dr4[,3])
+ bgs_cy35_means <- array(0,dim=c(num_traces))
+ amps_cy35_means <- array(0,dim=c(num_traces))
+ for(i in 1:num_traces)
+ {
+   bgs_cy35_means[i] <- mean(mat_dr4[,3+i])
+   amps_cy35_means[i] <- mean(mat_dr4[,3+num_traces+i])
+ }
+ print(bgs_cy35_means)
+ print(amps_cy35_means)
+ #plot(bgs_cy35_means,amps_cy35_means)
+ init_concs <- array(0,dim=c(num_traces,4))
+ 
+ init_concs[1,] <- c(2,12,0,0)
+ init_concs[2,] <- c(2,40,0,0)
+ init_concs[3,] <- c(4,12,0,0)
+ init_concs[4,] <- c(4,40,0,0)
+ 
+ data_stan_sim_dimreact4 <- list(num_times=length(ts),num_traces=4,ts=ts,k1=k1_mean,k2=k2_mean,
+                                  bgs_cy35 = bgs_cy35_means,amps_cy35=amps_cy35_means,init_concs=init_concs,t0=0)
+ 
+ stan_sim_dimreact4 <- stan(file="/Users/christianwachauf/Documents/Scripts/GithubRepo/RT_PCR_Evaluation/Stan/sim_dimerization_reaction4.stan",
+                            data=data_stan_sim_dimreact4,iter=1,chain=1,algorithm="Fixed_param") 
+ ar_dr4 <- as.array(stan_sim_dimreact4)
+ 
+ ## start plotting the data:
+ data_indices <- seq(from=1,to=720,by=3)
+ 
+ plot(data_rtpcr$time_seq[data_indices],data_rtpcr$`24hb_4nM_12nM_dos_Cy35`[data_indices],ylim=c(4800,9000),xlab="time [s]",ylab="intensity [a.u.]")
+ points(data_rtpcr$time_seq[data_indices],data_rtpcr$`24hb_4nM_40nM_dos_Cy35`[data_indices])
+ points(data_rtpcr$time_seq[data_indices],data_rtpcr$`24hb_2nM_12nM_dos_Cy35`[data_indices])
+ points(data_rtpcr$time_seq[data_indices],data_rtpcr$`24hb_2nM_40nM_dos_Cy35`[data_indices])
+ points(ts,ar_dr4[seq(from=1,to=960,by=4)],type="l",col="red",lwd=2)
+ points(ts,ar_dr4[seq(from=2,to=960,by=4)],type="l",col="red",lwd=2)
+ points(ts,ar_dr4[seq(from=3,to=960,by=4)],type="l",col="red",lwd=2)
+ points(ts,ar_dr4[seq(from=4,to=960,by=4)],type="l",col="red",lwd=2)
+ 
+ plot(data_rtpcr$time_seq[data_indices],data_rtpcr$`24hb_2nM_12nM_dos_Cy35`[data_indices])
+ points(ts,ar_dr4[seq(from=1,to=960,by=4)],type="l",col="red",lwd=2)
+ 
+ plot(data_rtpcr$time_seq[data_indices],data_rtpcr$`24hb_2nM_40nM_dos_Cy35`[data_indices])
+ points(ts,ar_dr4[seq(from=2,to=960,by=4)],type="l",col="red",lwd=2)
+ 
+ plot(data_rtpcr$time_seq[data_indices],data_rtpcr$`24hb_4nM_12nM_dos_Cy35`[data_indices])
+ points(ts,ar_dr4[seq(from=3,to=960,by=4)],type="l",col="red",lwd=2)
+ 
+ plot(data_rtpcr$time_seq[data_indices],data_rtpcr$`24hb_4nM_40nM_dos_Cy35`[data_indices])
+ points(ts,ar_dr4[seq(from=4,to=960,by=4)],type="l",col="red",lwd=2)
+ 
+ return(stan_sim_dimreact4)
+}
+
+## use Stan to simulate some dimerization reactions
+## that are following the kinetic scheme:
+## A + B --> C   (k_on1)
+## C + C <--> D  (k_on2, k_off2)
+Stan_Sim_Dimerization_Reaction5 <- function()
+{
+  require("rstan")
+  times <- seq(from=10,to=30000,by=10)
+  num_times <- length(times)
+  num_traces <- 2
+  k_on1 <- 2e-4  ## 2e-4 1/(nM s)
+  k_on2 <- 10e-4 ## 10e-4 1/(nM s)
+  k_off2 <- 1e-5 ## 1e-5 1/s
+  amps_cy35 <- c(700,700)
+  bgs_cy35 <- c(5000,5000)
+  
+  init_concs <- array(0,dim=c(2,4))
+  init_concs[1,] <- c(4,40,0,0)
+  init_concs[2,] <- c(2,40,0,0)
+  t0<-0
+  
+  data_sim_stan_dimerization5 <- list(num_times=num_times,num_traces=num_traces,ts=times,k_on1=k_on1,k_on2=k_on2,k_off2=k_off2,amps_cy35=amps_cy35,
+                                      bgs_cy35=bgs_cy35,init_concs=init_concs,t0=t0)
+  
+  stan_sim_dimerization5 <- stan(file="/Users/christianwachauf/Documents/Scripts/GithubRepo/RT_PCR_Evaluation/Stan/sim_dimerization_reaction5.stan",data = data_sim_stan_dimerization5,
+                                 iter=1,chain=1,algorithm="Fixed_param")
+  return(stan_sim_dimerization5)
+}
+
+## Stan_Fit_Dimerization_Reaction5(cy35_data,time)
+Stan_Fit_Dimerization_Reaction5 <- function(data_rtpcr,num_iters=100)
+{
+  ##num_traces <- nrow(cy35_data)
+  ##print("number of different traces: ")
+  ##print(num_traces)
+  num_traces <- 1
+  indices <- seq(from=1,to=720,by=3)
+  num_times <- length(indices)
+  times <- data_rtpcr$time_seq[indices]
+  cy35_data <- array(0,dim=c(1,num_times))
+  cy35_data[1,] <- data_rtpcr$`24hb_6dim_oligos_Cy35`[indices]
+  
+  init_concs <- array(0,dim=c(1,4))
+  init_concs[1,] <- c(4,40,0,0);
+  t0 <- 0;
+  data_sf_dim_react5 <- list(num_times=num_times,num_traces=num_traces,ts=times,cy35_data=cy35_data,init_concs=init_concs,t0=t0)
+  
+  bgs_cy35_init <- array(0,dim=c(1))
+  amps_cy35_init <- array(0,dim=c(1))
+  bgs_cy35_init[1] <- 5000
+  amps_cy35_init[1] <- 700
+  init_sf_dim_react5 <- list(list(sigma=40,k_on1=2e-4,k_on2=10e-4,k_off2=1e-5,bgs_cy35=bgs_cy35_init,amps_cy35=amps_cy35_init))
+  sf_dim_react5 <- stan(file="/Users/christianwachauf/Documents/Scripts/GithubRepo/RT_PCR_Evaluation/Stan/fit_dimerization_reaction5.stan",data=data_sf_dim_react5,
+                        init=init_sf_dim_react5,iter=num_iters,chain=1)
+  return(sf_dim_react5)
+}
 
 #parameters
 #{
-#  real<lower=0> sigma; // noise, supposed to be equal in both cases...
-#  real<lower=0> k1; // rate constants (theta[1] and theta[2])
-#  real<lower=0> k2;
-#  real<lower=0> amp_cy35_1;
-#  real<lower=0> bg_cy35_1;
-#  real<lower=0> amp_cy35_2;
-#  real<lower=0> bg_cy35_1;
+#  real<lower=0,upper=1000> sigma; // noise, supposed to be equal in both cases...
+#  real<lower=0,upper=0.1> k_on1; // rate constants (theta[1] and theta[2])
+#  real<lower=0,upper=0.1> k_on2;
+#  real<lower=0,upper=0.1> k_off2;
+  
+#  real<lower=0,upper=10000> bgs_cy35[num_traces];
+#  real<lower=0,upper=3000> amps_cy35[num_traces];
+#}#
+
+#data
+#{
+#  int<lower=1> num_times; // number of data points
+#  int<lower=1> num_traces;
+#  
+#  real ts[num_times]; // times at which model data is given#
+#  real cy35_data[num_traces,num_times];
+#  
+#  real<lower=0> init_concs[num_traces,4];
+#  real t0;
 #}
+
+## Get_Equilibrium_Concentrations(c_A0,c_B0,K_D)
+## returns for a bimolecular reaction with initial concentrations
+## "c_A0","c_B0" und "K_D"
+Get_Equilibrium_Concentrations <- function(c_A0,c_B0,K_D)
+{
+  term1 <- K_D + c_B0 - c_A0
+  c_A_eq <- -0.5*(term1) + sqrt(0.25*term1^2+K_D*c_A0)
+  c_B_eq <- c_A_eq + c_B0 - c_A0
+  c_AB_eq <- c_A_eq*c_B_eq/K_D
+  
+  df_eq_concs <- data.frame(c_A_eq,c_B_eq,c_AB_eq)
+  return(df_eq_concs)
+}
