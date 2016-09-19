@@ -52,8 +52,11 @@
     // specify the priors:
     sigma ~ normal(40,5.0);
    
-    k_on ~ gamma(0.01,0.01);
-    k_off ~ gamma(0.01,0.01);
+    k_on ~ normal(4e-4,0.5e-4);
+    k_off ~ normal(5e-5,1e-5);
+    
+    //k_on ~ gamma(0.01,0.01);
+    //k_off ~ gamma(0.01,0.01);
     
     theta[1] = k_on;
     theta[2] = k_off;

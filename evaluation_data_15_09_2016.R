@@ -142,12 +142,43 @@ Evaluate_Test_Data <- function(df_data,num_iters=50)
   return(sf_dim_react6)
 }
 
-Plot_From_Mean_Posterior <- function(sf_dim_react6)
+Plot_From_Mean_Posterior <- function(sf_dim_react6,rtpcr_data,num_traces)
 {
   mat <- as.matrix(sf_dim_react6)
   k_on_mean <- mean(mat[,2])
   k_off_mean <- mean(mat[,3])
+  bg_values <- array(0,dim=c(num_traces))
+  for(i in 1:num_traces)
+  {
+    bg_values[i] <- mean(mat[,3+i])
+  }
   
   
+  amp_values <- rep(mean(mat[,3+num_traces+1]),times=num_traces)
+  times <- seq(from=30,to=7200,by=30)
+  num_times <- length(times)
+  
+  init_concs <- array(0,dim=c(num_traces,2))
+  init_concs[1,] <- c(2,0)
+  init_concs[2,] <- c(4,0)
+  init_concs[3,] <- c(6,0)
+   
+  t0 <- 0
+ 
+  
+  data_stan_sim_dim_react6 <- list(num_times=num_times,num_traces=num_traces,bgs_cy35=bg_values,amps_cy35=amp_values,k_on=k_on_mean,k_off=k_off_mean,ts=times,init_concs=init_concs,t0=t0)
+  stan_sim_dim_react6 <- stan(file="/Users/christianwachauf/Documents/Scripts/GithubRepo/RT_PCR_Evaluation/Stan/sim_dimerization_reaction6.stan",data=data_stan_sim_dim_react6,
+                              iter=1,chain=1,algorithm="Fixed_param")
+  ar <- as.array(stan_sim_dim_react6)
+  
+  indices <- seq(from=1,to=720,by=3)
+  plot(rtpcr_data$time_seq[indices],rtpcr_data$`24hb_2nM_40nM_4dos_Cy35`[indices],ylim=c(6000,12000))
+  points(rtpcr_data$time_seq[indices],rtpcr_data$`24hb_4nM_40nM_4dos_Cy35`[indices])
+  points(rtpcr_data$time_seq[indices],rtpcr_data$`24hb_6nM_40nM_4dos_Cy35`[indices])
+  points(times,ar[seq(from=1,to=720,by=3)],col="red",type="l",lwd=2)
+  points(times,ar[seq(from=2,to=720,by=3)],col="red",type="l",lwd=2)
+  points(times,ar[seq(from=3,to=720,by=3)],col="red",type="l",lwd=2)
+  
+  return(ar)
 }
 
