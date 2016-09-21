@@ -250,3 +250,26 @@ Get_List_Ommp_From_File <- function(filename)
   }
   return(list_ommp)
 }
+
+Plot_Segment <- function(time_seq,intens_data,list_ommp,index_segment)
+{
+  print(index_segment)
+  offset<-1;
+  if(index_segment>1)
+  {
+    for(i in 1:(index_segment-1))
+    {
+      offset <- offset + list_ommp[[(i-1)*4+1]]*list_ommp[[(i-1)*4+3]]
+    }
+    first_index <- offset  
+  }
+  else
+  {
+    first_index <- 1
+  }
+  num_points <- list_ommp[[(index_segment-1)*4+1]]*list_ommp[[(index_segment-1)*4+3]]
+  
+  last_index <- offset+num_points-1
+  plot(time_seq[first_index:last_index],intens_data[first_index:last_index])
+  print(offset)
+}
